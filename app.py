@@ -81,16 +81,20 @@ def login():
         st.image("Logo.png", width=100)
         st.markdown(f"<h2 style='color:white;'>{NOMBRE_ALBERGUE}</h2>", unsafe_allow_html=True)
         st.markdown(f"<h3 style='color:#00529F;'>{NOMBRE_SEDE}</h3>", unsafe_allow_html=True)
-        documento = st.text_input("Documento de usuario")
-        password = st.text_input("Contraseña", type="password")
+        documento = st.text_input("Documento de usuario").strip()
+        password = st.text_input("Contraseña", type="password").strip()
         if st.button("Ingresar", type="primary", use_container_width=True):
-            user = pd.read_sql("SELECT * FROM usuarios WHERE documento=? AND password=?", conn, params=(documento, password))
+            # DEBUG: para ver que hay en la base en la nube
+            # st.write("DEBUG USUARIOS:", pd.read_sql("SELECT * FROM usuarios", conn))
+
+            user = pd.read_sql("SELECT * FROM usuarios WHERE CAST(documento AS TEXT) =? AND CAST(password AS TEXT) =?", conn, params=(documento, password))
             if not user.empty:
                 st.session_state.usuario = user.iloc[0]['nombre']
                 st.session_state.rol = user.iloc[0]['rol']
                 st.session_state.documento_user = user.iloc[0]['documento']
                 st.rerun()
-            else: st.error("Documento o contraseña incorrecta")
+            else:
+                st.error("Documento o contraseña incorrecta")
 
 # APP
 def app():
