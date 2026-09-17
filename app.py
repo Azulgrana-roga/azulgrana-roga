@@ -9,7 +9,7 @@ import socket
 
 LINK_NUBE = "https://azulgrana-roga.streamlit.app/?pagina=portal"
 LINK_BASE = "https://azulgrana-roga.streamlit.app"
-TELEFONO_ALBERGUE = "595981123456" # NUMERO DE BACILIO
+TELEFONO_ALBERGUE = "595981531063" # NUMERO DE BACILIO
 
 st.set_page_config(page_title="Azulgrana Róga", layout="wide", page_icon="🏠")
 st.markdown("""<style>
