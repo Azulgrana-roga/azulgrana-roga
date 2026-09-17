@@ -7,6 +7,7 @@ from io import BytesIO
 import urllib.parse
 import base64
 import socket
+import os
 
 def get_ip():
     try:
@@ -18,6 +19,10 @@ def get_ip():
     except:
         return "192.168.100.5"
 IP_LOCAL = get_ip()
+
+# --- CONFIGURA ACA TU LINK DE STREAMLIT CLOUD ---
+LINK_NUBE = "https://TU-LINK-AQUI.streamlit.app/?pagina=portal"
+# Ejemplo: LINK_NUBE = "https://azulgranaroga.streamlit.app/?pagina=portal"
 
 st.set_page_config(page_title="Azulgrana Róga", layout="wide", page_icon="🏠")
 
@@ -31,9 +36,8 @@ st.markdown("""
     h1, h2, h3 {color: #00529F; font-weight: bold;}
     [data-testid="stDataFrame"] {background-color: white!important;}
     [data-testid="stDataFrame"] * {color: black!important;}
-    /* CONTROL FINAL FLECHAS + SIN DEPLOY */
     #MainMenu, footer, [data-testid="stDecoration"], [data-testid="stStatusWidget"] {display:none!important;}
-   .stDeployButton, [data-testid="stDeployButton"], [data-testid="stAppDeployButton"], a[href*="deploy"] {display:none!important; visibility:hidden!important; width:0!important; height:0!important;}
+  .stDeployButton, [data-testid="stDeployButton"], [data-testid="stAppDeployButton"], a[href*="deploy"] {display:none!important; visibility:hidden!important; width:0!important; height:0!important;}
     button[title="View fullscreen"], [data-testid="StyledFullScreenButton"] {display: none!important;}
     header, [data-testid="stHeader"] {background: #001F3F!important; background-color: #001F3F!important; visibility: visible!important;}
     [data-testid="stToolbar"] {visibility: visible!important; display: block!important;}
@@ -85,7 +89,9 @@ if 'modo_proyeccion' not in st.session_state:
 pagina_qr = str(st.query_params.get("pagina", "")).lower()
 if pagina_qr in ["portal", "portal joven"]:
     st.markdown(f"<h1 style='color:white;'>Portal del Joven - {NOMBRE_SEDE}</h1>", unsafe_allow_html=True)
-    st.caption(f"Conectado a red local {IP_LOCAL}")
+    # Si esta en la nube, no mostramos IP local
+    if "streamlit" not in LINK_NUBE or "TU-LINK" in LINK_NUBE:
+        st.caption(f"Conectado a red local {IP_LOCAL}")
     tab1, tab2, tab3 = st.tabs(["Solicitar Salida", "Consultar Estado", "Marcar Regreso"])
     with tab1:
         doc_qr = st.text_input("Ingresá tu documento", key="doc_solicitar")
@@ -218,7 +224,7 @@ def app():
             st.markdown("""
                 <style>
                 [data-testid="stSidebar"] {display: none;}
-     .block-container {padding-top: 1rem; padding-bottom: 0rem;}
+    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
                 </style>
                 """, unsafe_allow_html=True)
             size_num = "90px"; size_txt = "22px"
@@ -260,13 +266,21 @@ def app():
                 st.info("Aún no hay solicitudes")
         with col_der:
             st.markdown("### QR Salida")
-            url_salida = f"http://{IP_LOCAL}:8501/?pagina=portal"
+            # --- CAMBIO IMPORTANTE PARA QUE FUNCIONE EN LA NUBE ---
+            if "TU-LINK-AQUI" in LINK_NUBE:
+                # Si aun no configuraste el link, usa IP local para pruebas
+                url_salida = f"http://{IP_LOCAL}:8501/?pagina=portal"
+                st.warning("⚠️ Configurá LINK_NUBE arriba en el código con tu link de Streamlit Cloud")
+            else:
+                # Si ya configuraste, usa el link de la nube
+                url_salida = LINK_NUBE
+
             qr_salida = generar_qr(url_salida)
             st.image(qr_salida, width=180 if not st.session_state.get("modo_proyeccion", False) else 350)
             st.code(url_salida, language=None)
             if not st.session_state.get("modo_proyeccion", False):
                 st.download_button("Descargar QR", qr_salida, "qr_salida.png", use_container_width=True)
-                st.info("Mismo WiFi que la PC")
+                st.info(f"Local: http://{IP_LOCAL}:8501/?pagina=portal")
     elif pagina == "Portal Joven" and st.session_state.rol == "Director":
         st.title("Portal del Joven - Azulgrana Róga")
         tab1, tab2, tab3 = st.tabs(["Solicitar Salida", "Consultar Estado", "Marcar Regreso"])
