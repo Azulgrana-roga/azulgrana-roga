@@ -31,18 +31,17 @@ st.markdown("""
     h1, h2, h3 {color: #00529F; font-weight: bold;}
     [data-testid="stDataFrame"] {background-color: white!important;}
     [data-testid="stDataFrame"] * {color: black!important;}
-    /* FIX DEFINITIVO - SIN DEPLOY Y CON LOS 2 BOTONES */
-    #MainMenu, footer {visibility: hidden;}
-   .stDeployButton, [data-testid="stDeployButton"], [data-testid="stAppDeployButton"] {display: none!important; visibility: hidden!important; height: 0!important; width: 0!important;}
-    [data-testid="stToolbar"] {display: none!important;}
-    [data-testid="stDecoration"] {display: none!important;}
-    [data-testid="stStatusWidget"] {display: none!important;}
+    /* CONTROL FINAL FLECHAS + SIN DEPLOY */
+    #MainMenu, footer, [data-testid="stDecoration"], [data-testid="stStatusWidget"] {display:none!important;}
+   .stDeployButton, [data-testid="stDeployButton"], [data-testid="stAppDeployButton"], a[href*="deploy"] {display:none!important; visibility:hidden!important; width:0!important; height:0!important;}
     button[title="View fullscreen"], [data-testid="StyledFullScreenButton"] {display: none!important;}
-    [data-testid="collapsedControl"] {display: block!important;}
-    header, [data-testid="stHeader"] {
+    header, [data-testid="stHeader"] {background: #001F3F!important; background-color: #001F3F!important; visibility: visible!important;}
+    [data-testid="stToolbar"] {visibility: visible!important; display: block!important;}
+    [data-testid="collapsedControl"] {
+        display: block!important;
         visibility: visible!important;
-        background-color: #001F3F!important;
-        background: #001F3F!important;
+        opacity: 1!important;
+        position: relative!important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -219,7 +218,7 @@ def app():
             st.markdown("""
                 <style>
                 [data-testid="stSidebar"] {display: none;}
-          .block-container {padding-top: 1rem; padding-bottom: 0rem;}
+     .block-container {padding-top: 1rem; padding-bottom: 0rem;}
                 </style>
                 """, unsafe_allow_html=True)
             size_num = "90px"; size_txt = "22px"
