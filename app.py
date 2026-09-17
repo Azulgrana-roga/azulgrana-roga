@@ -21,7 +21,7 @@ def get_ip():
 IP_LOCAL = get_ip()
 
 # --- CONFIGURA ACA TU LINK DE STREAMLIT CLOUD ---
-LINK_NUBE = "https://TU-LINK-AQUI.streamlit.app/?pagina=portal"
+LINK_NUBE = "https://azulgrana-roga.streamlit.app/?pagina=portal"
 # Ejemplo: LINK_NUBE = "https://azulgranaroga.streamlit.app/?pagina=portal"
 
 st.set_page_config(page_title="Azulgrana Róga", layout="wide", page_icon="🏠")
