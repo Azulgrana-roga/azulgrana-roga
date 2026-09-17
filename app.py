@@ -30,8 +30,8 @@ st.markdown("""
             display: flex !important;
             visibility: visible !important;
             position: fixed !important;
-            top: 80px !important;
-            left: 80px !important;
+            top: 50px !important;
+            left: 40px !important;
             z-index: 9999999 !important;
             background: #ff0000 !important;
             color: white !important;
