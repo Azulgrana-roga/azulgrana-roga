@@ -5,11 +5,10 @@ from datetime import datetime, date
 import qrcode
 from io import BytesIO
 import urllib.parse
-import socket
 
 LINK_NUBE = "https://azulgrana-roga.streamlit.app/?pagina=portal"
 LINK_BASE = "https://azulgrana-roga.streamlit.app"
-TELEFONO_ALBERGUE = "595981531063" # NUMERO DE BACILIO
+TELEFONO_ALBERGUE = "595981123456"
 
 st.set_page_config(page_title="Azulgrana Róga", layout="wide", page_icon="🏠")
 st.markdown("""<style>
@@ -19,17 +18,15 @@ h1, h2, h3 {color: #00529F; font-weight: bold;} [data-testid="stDataFrame"] {bac
 #MainMenu, footer {display:none!important;}
 </style>""", unsafe_allow_html=True)
 
-ROLES = ["Director", "Encargado/a del Albergue", "Trabajador/a Social", "Médico/a", "Psicólogo/a", "Tutor", "CEO"]
 conn = sqlite3.connect('albergue.db', check_same_thread=False)
 c = conn.cursor()
 c.execute('''CREATE TABLE IF NOT EXISTS usuarios (documento TEXT PRIMARY KEY, nombre TEXT, password TEXT, rol TEXT)''')
 c.execute('''CREATE TABLE IF NOT EXISTS jovenes (id INTEGER PRIMARY KEY AUTOINCREMENT, documento TEXT, nombres TEXT, apellidos TEXT, fecha_nac DATE, ciudad TEXT, barrio TEXT, direccion TEXT, telefono TEXT, responsable TEXT, parentesco TEXT, tel_responsable TEXT, fecha_ingreso DATE, estado TEXT, habitacion TEXT, cama TEXT, colegio TEXT, grado TEXT, deporte TEXT, posicion TEXT, categoria TEXT, turno TEXT, foto_url TEXT, motivo_ingreso TEXT)''')
 c.execute('''CREATE TABLE IF NOT EXISTS permisos (id INTEGER PRIMARY KEY AUTOINCREMENT, joven_id INTEGER, fecha_sol DATE, fecha_salida DATE, hora_salida TEXT, fecha_regreso DATE, hora_regreso TEXT, tipo_salida TEXT, destino TEXT, persona_salida TEXT, parentesco TEXT, tel_contacto TEXT, motivo TEXT, estado TEXT DEFAULT 'Pendiente', hora_regreso_real TEXT, qr_id TEXT)''')
 c.execute('''CREATE TABLE IF NOT EXISTS mensajes (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha DATE, adolescente TEXT, contacto TEXT, tipo TEXT, mensaje TEXT, estado TEXT)''')
-c.execute('''CREATE TABLE IF NOT EXISTS contactos (id INTEGER PRIMARY KEY AUTOINCREMENT, joven_id INTEGER, nombres TEXT, apellidos TEXT, cargo TEXT, rol TEXT, telefono TEXT, observacion TEXT)''')
 c.execute('''CREATE TABLE IF NOT EXISTS tutoria (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha DATE, desarrollo TEXT, rutinas TEXT, infraestructura TEXT, observaciones TEXT, necesidad TEXT, prioridad TEXT)''')
 c.execute('''CREATE TABLE IF NOT EXISTS tutoria_joven (id INTEGER PRIMARY KEY AUTOINCREMENT, joven_id INTEGER, fecha DATE, informe TEXT)''')
-c.execute("INSERT OR IGNORE INTO mensajes (id, tipo, mensaje) VALUES (1, 'Predeterminado', 'Hola {responsable}. Su hijo/a {nombre} solicita salida del albergue Azulgrana Róga. Destino: {destino} - Fecha: {fecha_salida} a las {hora_salida}. Motivo: {motivo}')")
+c.execute("INSERT OR IGNORE INTO mensajes (id, tipo, mensaje) VALUES (1, 'Predeterminado', 'Hola {responsable}. Su hijo/a {nombre} solicita salida de Azulgrana Róga. Destino: {destino} - Fecha: {fecha_salida} {hora_salida}. Motivo: {motivo}')")
 c.execute("INSERT OR IGNORE INTO usuarios (documento, nombre, password, rol) VALUES ('admin', 'Administrador', 'cerro2026', 'Director')")
 conn.commit()
 
@@ -44,103 +41,79 @@ def limpiar_numero(num):
     if num.startswith('0'): num = '595' + num[1:]
     return num
 
-for k in ['usuario','rol','confirmar_eliminar_id']:
+for k in ['usuario','rol']:
     if k not in st.session_state: st.session_state[k]=None
 
-# === 1. RESPUESTA DEL RESPONSABLE POR LINK ===
+# APROBACION POR LINK
 accion = str(st.query_params.get("accion", "")).lower()
 id_accion = st.query_params.get("id", "")
 if accion in ["aprobar", "rechazar"] and id_accion:
     nuevo = "Aprobado" if accion=="aprobar" else "Rechazado"
     c.execute("UPDATE permisos SET estado=? WHERE id=?", (nuevo, int(id_accion)))
     conn.commit()
-    info = pd.read_sql("SELECT j.nombres, j.apellidos, j.responsable, p.destino FROM permisos p JOIN jovenes j ON p.joven_id=j.id WHERE p.id=?", conn, params=(int(id_accion),))
+    info = pd.read_sql("SELECT j.nombres, j.apellidos, j.responsable FROM permisos p JOIN jovenes j ON p.joven_id=j.id WHERE p.id=?", conn, params=(int(id_accion),))
     if not info.empty:
-        nom = f"{info.iloc[0]['nombres']} {info.iloc[0]['apellidos']}"
-        texto = f"RESPUESTA {nuevo.upper()}: El responsable {info.iloc[0]['responsable']} ha {nuevo} la salida de {nom} a {info.iloc[0]['destino']} ID:{id_accion}"
-        c.execute("INSERT INTO mensajes (fecha, adolescente, contacto, tipo, mensaje, estado) VALUES (?,?,?,?,?,?)", (str(date.today()), nom, "Albergue", f"Respuesta {nuevo}", texto, nuevo))
+        texto = f"RESPUESTA {nuevo}: {info.iloc[0]['responsable']} ha {nuevo} a {info.iloc[0]['nombres']} {info.iloc[0]['apellidos']} ID:{id_accion}"
+        c.execute("INSERT INTO mensajes (fecha, adolescente, contacto, tipo, mensaje, estado) VALUES (?,?,?,?,?,?)", (str(date.today()), f"{info.iloc[0]['nombres']} {info.iloc[0]['apellidos']}", "Albergue", f"Link {nuevo}", texto, nuevo))
         conn.commit()
-        url_aviso = f"https://wa.me/{TELEFONO_ALBERGUE}?text={urllib.parse.quote(texto)}"
-        st.markdown(f"<h1 style='color:white;text-align:center;margin-top:80px;'>✅ Solicitud {id_accion} {nuevo}</h1>", unsafe_allow_html=True)
-        st.link_button(f"📲 Avisar al Albergue que fue {nuevo}", url_aviso, type="primary", use_container_width=True)
+        st.markdown(f"<h1 style='color:white;text-align:center;margin-top:80px;'>✅ Solicitud {id_accion} {nuevo}</h1><p style='color:white;text-align:center;'>Ya se actualizó en el Panel de Control</p>", unsafe_allow_html=True)
         st.balloons()
         st.stop()
 
-# === 2. PORTAL JOVEN ===
+# PORTAL JOVEN
 if str(st.query_params.get("pagina","")).lower() in ["portal","portal joven"]:
-    st.markdown("<h1 style='color:white;'>Portal del Joven - Azulgrana Róga</h1>", unsafe_allow_html=True)
-    tab1, tab2 = st.tabs(["Solicitar Salida", "Consultar Estado"])
-    with tab1:
-        doc = st.text_input("Ingresá tu documento")
-        if doc:
-            j = pd.read_sql("SELECT * FROM jovenes WHERE documento=?", conn, params=(doc,))
-            if j.empty: st.error("Documento no encontrado")
-            elif j.iloc[0]['estado']!="Actual": st.error("No estás ACTIVO")
-            else:
-                jd = j.iloc[0]
-                st.success(f"Bienvenido {jd['nombres']} {jd['apellidos']}")
-                plant = pd.read_sql("SELECT mensaje FROM mensajes WHERE tipo='Predeterminado' LIMIT 1", conn).iloc[0]['mensaje']
-                with st.form("sol"):
-                    c1,c2=st.columns(2)
-                    with c1:
-                        fs=st.date_input("Fecha salida")
-                        hs=st.time_input("Hora salida")
-                        fr=st.date_input("Fecha regreso")
-                        hr=st.time_input("Hora regreso")
-                    with c2:
-                        tipo=st.selectbox("Tipo",["Familiar","Médico","Deportivo","Personal","Otro"])
-                        dest=st.text_input("Destino *")
-                        pers=st.text_input("Persona con quien sale")
-                        mot=st.text_area("Motivo")
-                    if st.form_submit_button("Enviar solicitud", type="primary", use_container_width=True):
-                        if not dest: st.warning("Destino obligatorio")
-                        else:
-                            c.execute("INSERT INTO permisos (joven_id,fecha_sol,fecha_salida,hora_salida,fecha_regreso,hora_regreso,tipo_salida,destino,persona_salida,motivo,estado) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                            (jd['id'], str(date.today()), str(fs), str(hs), str(fr), str(hr), tipo, dest, pers, mot, "Pendiente"))
-                            conn.commit()
-                            id_nuevo = c.lastrowid
-                            # PLANTILLA DE MENSAJERIA
-                            txt_base = plant.replace("{nombre}", f"{jd['nombres']} {jd['apellidos']}").replace("{responsable}", str(jd['responsable'])).replace("{destino}", dest).replace("{fecha_salida}", str(fs)).replace("{hora_salida}", str(hs)).replace("{motivo}", mot)
-                            link_ap = f"{LINK_BASE}/?accion=aprobar&id={id_nuevo}"
-                            link_re = f"{LINK_BASE}/?accion=rechazar&id={id_nuevo}"
-                            txt_final = f"{txt_base}\n\n*Responda tocando:*\n✅ APROBAR: {link_ap}\n❌ RECHAZAR: {link_re}\n\nRegreso: {fr} {hr}"
-                            tel = limpiar_numero(jd['tel_responsable'])
-                            url_wp = f"https://wa.me/{tel}?text={urllib.parse.quote(txt_final)}"
-                            c.execute("INSERT INTO mensajes (fecha, adolescente, contacto, tipo, mensaje, estado) VALUES (?,?,?,?,?,?)", (str(date.today()), f"{jd['nombres']} {jd['apellidos']}", jd['responsable'], "Salida", txt_final, "Pendiente"))
-                            conn.commit()
-                            st.success(f"✅ Solicitud #{id_nuevo} enviada como PENDIENTE")
-                            st.link_button(f"📱 Enviar WhatsApp a {jd['responsable']}", url_wp, use_container_width=True)
-    with tab2:
-        doc2 = st.text_input("Documento para consultar")
-        if doc2:
-            df = pd.read_sql("SELECT p.id, p.fecha_sol, p.destino, p.estado FROM permisos p JOIN jovenes j ON p.joven_id=j.id WHERE j.documento=? ORDER BY p.id DESC", conn, params=(doc2,))
-            st.dataframe(df, use_container_width=True)
+    st.markdown("<h1 style='color:white;'>Portal del Joven</h1>", unsafe_allow_html=True)
+    doc = st.text_input("Ingresá tu documento")
+    if doc:
+        j = pd.read_sql("SELECT * FROM jovenes WHERE documento=?", conn, params=(doc,))
+        if j.empty: st.error("No encontrado")
+        elif j.iloc[0]['estado']!="Actual": st.error("No ACTIVO")
+        else:
+            jd=j.iloc[0]
+            st.success(f"{jd['nombres']} {jd['apellidos']}")
+            plant = pd.read_sql("SELECT mensaje FROM mensajes WHERE tipo='Predeterminado' LIMIT 1", conn).iloc[0]['mensaje']
+            with st.form("sol"):
+                c1,c2=st.columns(2)
+                with c1:
+                    fs=st.date_input("Fecha salida"); hs=st.time_input("Hora salida"); fr=st.date_input("Fecha regreso"); hr=st.time_input("Hora regreso")
+                with c2:
+                    tipo=st.selectbox("Tipo",["Familiar","Médico","Deportivo","Personal","Otro"]); dest=st.text_input("Destino *"); pers=st.text_input("Con quien sale"); mot=st.text_area("Motivo")
+                if st.form_submit_button("Enviar solicitud", type="primary", use_container_width=True):
+                    if not dest: st.warning("Destino obligatorio")
+                    else:
+                        c.execute("INSERT INTO permisos (joven_id,fecha_sol,fecha_salida,hora_salida,fecha_regreso,hora_regreso,tipo_salida,destino,persona_salida,motivo,estado) VALUES (?,?,?,?,?,?,?,?,?,?,?)", (jd['id'], str(date.today()), str(fs), str(hs), str(fr), str(hr), tipo, dest, pers, mot, "Pendiente"))
+                        conn.commit()
+                        id_nuevo=c.lastrowid
+                        txt_base = plant.replace("{nombre}", f"{jd['nombres']} {jd['apellidos']}").replace("{responsable}", str(jd['responsable'])).replace("{destino}", dest).replace("{fecha_salida}", str(fs)).replace("{hora_salida}", str(hs)).replace("{motivo}", mot)
+                        link_ap = f"{LINK_BASE}/?accion=aprobar&id={id_nuevo}"
+                        link_re = f"{LINK_BASE}/?accion=rechazar&id={id_nuevo}"
+                        txt_final = f"{txt_base}\n\n✅ APROBAR: {link_ap}\n❌ RECHAZAR: {link_re}"
+                        tel=limpiar_numero(jd['tel_responsable'])
+                        url_wp=f"https://wa.me/{tel}?text={urllib.parse.quote(txt_final)}"
+                        c.execute("INSERT INTO mensajes (fecha, adolescente, contacto, tipo, mensaje, estado) VALUES (?,?,?,?,?,?)", (str(date.today()), f"{jd['nombres']} {jd['apellidos']}", jd['responsable'], "Salida", txt_final, "Pendiente"))
+                        conn.commit()
+                        st.success(f"Solicitud #{id_nuevo} PENDIENTE enviada")
+                        st.link_button(f"📱 Enviar WhatsApp a {jd['responsable']}", url_wp, use_container_width=True)
     st.stop()
 
 def login():
-    st.markdown("<style>[data-testid='stSidebar']{display:none;}</style>", unsafe_allow_html=True)
-    _,c2,_ = st.columns([1,2,1])
+    _,c2,_=st.columns([1,2,1])
     with c2:
         st.image("Logo.png", width=120)
-        d=st.text_input("Documento")
-        p=st.text_input("Contraseña", type="password")
+        d=st.text_input("Documento"); p=st.text_input("Contraseña", type="password")
         if st.button("Ingresar", type="primary", use_container_width=True):
             u=pd.read_sql("SELECT * FROM usuarios WHERE documento=? AND password=?", conn, params=(d,p))
             if not u.empty:
-                st.session_state.usuario=u.iloc[0]['nombre']
-                st.session_state.rol=u.iloc[0]['rol']
-                st.rerun()
-            else: st.error("Datos incorrectos")
+                st.session_state.usuario=u.iloc[0]['nombre']; st.session_state.rol=u.iloc[0]['rol']; st.rerun()
+            else: st.error("Incorrecto")
 
 def app():
     st.sidebar.image("Logo.png", width=120)
-    st.sidebar.title("🏠 Azulgrana Róga")
-    MENU = ["Panel de Control", "Lista de Usuarios", "Jovenes", "Permisos", "Mensajería", "Informe Tutoría", "Reportes", "QR de Acceso", "WhatsApp Web", "Crear Usuarios", "Portal Joven", "Contactos del Albergue"] if st.session_state.rol=="Director" else ["Panel de Control", "Lista de Usuarios", "Jovenes", "Permisos", "Mensajería", "Informe Tutoría", "Reportes", "QR de Acceso", "WhatsApp Web"]
+    MENU = ["Panel de Control", "Jovenes", "Permisos", "WhatsApp Web", "Mensajería", "Reportes", "QR de Acceso"]
+    if st.session_state.rol=="Director": MENU += ["Lista de Usuarios","Crear Usuarios"]
     pag = st.sidebar.radio("Menú", MENU)
     if st.sidebar.button("Cerrar Sesión", type="primary", use_container_width=True):
-        st.session_state.usuario=None
-        st.session_state.rol=None
-        st.rerun()
+        st.session_state.usuario=None; st.rerun()
 
     if pag=="Panel de Control":
         st.title("Panel de Control")
@@ -151,89 +124,96 @@ def app():
         c2.metric("PENDIENTES", len(df_p[df_p['estado']=="Pendiente"]) if not df_p.empty else 0)
         c3.metric("APROBADOS", len(df_p[df_p['estado']=="Aprobado"]) if not df_p.empty else 0)
         c4.metric("RECHAZADOS", len(df_p[df_p['estado']=="Rechazado"]) if not df_p.empty else 0)
+        if not df_p.empty:
+            df_tabla = pd.read_sql("""SELECT p.id as ID, j.nombres || ' ' || j.apellidos as Adolescente, j.responsable as Responsable, p.fecha_sol as Solicitud, p.destino as Destino, p.estado as Resultado FROM permisos p JOIN jovenes j ON p.joven_id=j.id ORDER BY p.id DESC""", conn)
+            st.dataframe(df_tabla, use_container_width=True, hide_index=True)
+
+    elif pag=="WhatsApp Web":
+        st.title("📱 WhatsApp Web - Centro de Mensajes")
+
+        col_qr, col_info = st.columns([1,2])
+        with col_qr:
+            st.subheader("Conectar por QR")
+            # QR que abre WhatsApp Web
+            qr_wp = generar_qr("https://web.whatsapp.com")
+            st.image(qr_wp, width=180)
+            st.link_button("🔗 Abrir WhatsApp Web", "https://web.whatsapp.com", use_container_width=True)
+            st.caption("1. Tocá el botón\n2. En tu celular: WhatsApp > 3 puntitos > Dispositivos vinculados > Vincular\n3. Escaneá el QR de la PC")
+
+        with col_info:
+            st.subheader("Enviar mensaje al responsable")
+            st.caption("Usa la plantilla de Mensajería")
+            plantilla = pd.read_sql("SELECT mensaje FROM mensajes WHERE tipo='Predeterminado' LIMIT 1", conn).iloc[0]['mensaje']
+            st.code(plantilla, language=None)
+            tel_env = st.text_input("Número del responsable (ej: 0981123456)")
+            id_env = st.number_input("ID Permiso a enviar (opcional, para incluir links)", min_value=0, step=1)
+            mensaje_manual = st.text_area("Mensaje a enviar", value=plantilla, height=150)
+
+            if st.button("Generar Link WhatsApp", type="primary", use_container_width=True):
+                if not tel_env: st.warning("Poné número")
+                else:
+                    txt_final = mensaje_manual
+                    if id_env>0:
+                        txt_final += f"\n\n✅ APROBAR: {LINK_BASE}/?accion=aprobar&id={id_env}\n❌ RECHAZAR: {LINK_BASE}/?accion=rechazar&id={id_env}"
+                    url = f"https://wa.me/{limpiar_numero(tel_env)}?text={urllib.parse.quote(txt_final)}"
+                    st.link_button(f"📲 Abrir WhatsApp para enviar", url, use_container_width=True)
+                    c.execute("INSERT INTO mensajes (fecha, adolescente, contacto, tipo, mensaje, estado) VALUES (?,?,?,?,?,?)", (str(date.today()), f"ID {id_env}", tel_env, "Enviado Manual", txt_final, "Pendiente"))
+                    conn.commit()
+
         st.markdown("---")
-        col_izq, col_der = st.columns([3,1])
-        with col_izq:
-            st.markdown("### Permisos Solicitados - Datos del solicitante y resultado")
-            if not df_p.empty:
-                df_tabla = pd.read_sql("""SELECT p.id as ID, j.documento as Doc, j.nombres || ' ' || j.apellidos as Adolescente, j.responsable as Responsable, j.tel_responsable as Tel_Resp, p.fecha_sol as Solicitud, p.fecha_salida as Salida, p.destino as Destino, p.motivo as Motivo, p.estado as Resultado FROM permisos p JOIN jovenes j ON p.joven_id=j.id ORDER BY p.id DESC""", conn)
-                st.dataframe(df_tabla, use_container_width=True, hide_index=True)
-                st.markdown("Actualizar manualmente si el responsable responde por texto:")
-                ca,cb,cc=st.columns(3)
-                with ca: id_sel=st.selectbox("ID Permiso", df_p['id'].tolist())
-                with cb: est_sel=st.selectbox("Resultado", ["Pendiente","Aprobado","Rechazado"])
-                with cc:
-                    st.write("")
-                    if st.button("Actualizar Resultado", type="primary", use_container_width=True):
-                        c.execute("UPDATE permisos SET estado=? WHERE id=?", (est_sel, id_sel))
-                        conn.commit()
-                        st.rerun()
-            else: st.info("Sin solicitudes")
-        with col_der:
-            st.markdown("### QR Portal")
-            st.image(generar_qr(LINK_NUBE), width=200)
-            st.code(LINK_NUBE)
-            st.download_button("Descargar QR", generar_qr(LINK_NUBE), "qr_portal.png", use_container_width=True)
+        st.subheader("Registrar respuesta que viene por WhatsApp")
+        st.info("Cuando el papá te responde APROBADO o RECHAZADO por WhatsApp, pegá acá su mensaje para que se actualice el Panel")
+        c_a, c_b = st.columns(2)
+        with c_a: id_resp = st.number_input("ID Permiso", min_value=1, step=1, key="id_resp_wp")
+        with c_b: contacto_resp = st.text_input("Nombre contacto", key="contact_resp")
+        resp_wp = st.text_area("Pegá lo que respondió por WhatsApp", key="resp_wp")
+
+        if st.button("✅ Procesar Respuesta de WhatsApp y Actualizar Panel", type="primary", use_container_width=True):
+            if not resp_wp: st.warning("Pegá la respuesta")
+            else:
+                txt = resp_wp.upper()
+                if "APROB" in txt: nuevo="Aprobado"
+                elif "RECHAZ" in txt or "NO AUTORIZO" in txt: nuevo="Rechazado"
+                else:
+                    st.error("No encontré APROBADO o RECHAZADO")
+                    st.stop()
+                c.execute("UPDATE permisos SET estado=? WHERE id=?", (nuevo, int(id_resp)))
+                c.execute("INSERT INTO mensajes (fecha, adolescente, contacto, tipo, mensaje, estado) VALUES (?,?,?,?,?,?)", (str(date.today()), f"ID {id_resp}", contacto_resp, f"Respuesta WhatsApp {nuevo}", resp_wp, nuevo))
+                conn.commit()
+                st.success(f"Permiso #{id_resp} ahora {nuevo} - Ya está en Panel de Control")
+                st.balloons()
+                st.rerun()
+
+        st.markdown("---")
+        st.subheader("📜 Historial completo de WhatsApp")
+        df_hist = pd.read_sql("SELECT id, fecha, adolescente as Adolescente, contacto as Contacto, tipo as Tipo, estado as Estado, mensaje as Mensaje FROM mensajes ORDER BY id DESC", conn)
+        st.dataframe(df_hist, use_container_width=True)
 
     elif pag=="Jovenes":
-        st.title("Gestión de Jóvenes")
+        st.title("Jovenes")
         st.dataframe(pd.read_sql("SELECT * FROM jovenes", conn), use_container_width=True)
-        st.markdown("---")
-        with st.form("form_nuevo", clear_on_submit=True):
-            c1,c2=st.columns(2)
-            with c1:
-                documento=st.text_input("Documento"); nombres=st.text_input("Nombres"); apellidos=st.text_input("Apellidos"); responsable=st.text_input("Responsable"); tel_responsable=st.text_input("Tel Responsable")
-            with c2:
-                fecha_ingreso=st.date_input("Fecha ingreso"); estado=st.selectbox("Estado",["Actual","Desvinculado"]); habitacion=st.text_input("Habitación"); categoria=st.text_input("Categoría")
-            motivo=st.text_area("Motivo ingreso")
-            if st.form_submit_button("Guardar Nuevo"):
-                c.execute("INSERT INTO jovenes (documento,nombres,apellidos,responsable,tel_responsable,fecha_ingreso,estado,habitacion,categoria,motivo_ingreso) VALUES (?,?,?,?,?,?,?,?,?,?)", (documento,nombres,apellidos,responsable,tel_responsable,str(fecha_ingreso),estado,habitacion,categoria,motivo))
+        with st.form("add", clear_on_submit=True):
+            d=st.text_input("Documento"); n=st.text_input("Nombres"); a=st.text_input("Apellidos"); r=st.text_input("Responsable"); tr=st.text_input("Tel Responsable")
+            if st.form_submit_button("Guardar"):
+                c.execute("INSERT INTO jovenes (documento,nombres,apellidos,responsable,tel_responsable,estado) VALUES (?,?,?,?,?,?)", (d,n,a,r,tr,"Actual"))
                 conn.commit()
-                st.success("Guardado")
                 st.rerun()
-        st.markdown("---")
-        st.subheader("✏️ Editar")
-        doc_editar = st.text_input("Documento a editar")
-        if doc_editar:
-            je = pd.read_sql("SELECT * FROM jovenes WHERE documento=?", conn, params=(doc_editar,))
-            if je.empty: st.error("No existe")
-            else:
-                jd=je.iloc[0]
-                st.info(f"Editando {jd['nombres']} {jd['apellidos']}")
-                with st.form("form_edit"):
-                    en=st.text_input("Nombres", str(jd['nombres'])); ea=st.text_input("Apellidos", str(jd['apellidos'])); er=st.text_input("Responsable", str(jd['responsable'] or "")); et=st.text_input("Tel Responsable", str(jd['tel_responsable'] or "")); ee=st.selectbox("Estado", ["Actual","Desvinculado"], index=0 if jd['estado']=="Actual" else 1)
-                    if st.form_submit_button("💾 Guardar Cambios", type="primary", use_container_width=True):
-                        c.execute("UPDATE jovenes SET nombres=?, apellidos=?, responsable=?, tel_responsable=?, estado=? WHERE id=?", (en,ea,er,et,ee,int(jd['id'])))
-                        conn.commit()
-                        st.success("✅ Actualizado")
-                        st.rerun()
 
-    elif pag=="Permisos":
-        st.title("Permisos")
-        st.dataframe(pd.read_sql("SELECT p.id, j.nombres, j.apellidos, j.responsable, p.destino, p.estado FROM permisos p JOIN jovenes j ON p.joven_id=j.id ORDER BY p.id DESC", conn), use_container_width=True)
     elif pag=="Mensajería":
-        st.title("Mensajería")
+        st.title("Plantilla")
         msg = pd.read_sql("SELECT mensaje FROM mensajes WHERE tipo='Predeterminado' LIMIT 1", conn).iloc[0]['mensaje']
         with st.form("plant"):
-            nuevo=st.text_area("Plantilla - Usa {nombre} {responsable} {destino} {fecha_salida} {hora_salida} {motivo}", msg, height=150)
-            if st.form_submit_button("Guardar Plantilla"):
+            nuevo=st.text_area("Plantilla {nombre} {responsable} {destino} {fecha_salida} {hora_salida} {motivo}", msg, height=150)
+            if st.form_submit_button("Guardar"):
                 c.execute("UPDATE mensajes SET mensaje=? WHERE tipo='Predeterminado'", (nuevo,))
                 conn.commit()
-                st.success("Plantilla guardada")
-        st.dataframe(pd.read_sql("SELECT fecha, adolescente, contacto, tipo, estado, mensaje FROM mensajes ORDER BY id DESC", conn), use_container_width=True)
-    elif pag=="Panel de Control" or True:
-        if pag in ["Lista de Usuarios","Crear Usuarios","Contactos del Albergue","Informe Tutoría","Reportes","QR de Acceso","WhatsApp Web","Portal Joven"]:
-            st.title(pag)
-            if pag=="Lista de Usuarios": st.dataframe(pd.read_sql("SELECT documento,nombre,rol FROM usuarios", conn), use_container_width=True)
-            if pag=="QR de Acceso":
-                qr=generar_qr(LINK_NUBE)
-                st.image(qr, width=300)
-                st.download_button("Descargar", qr, "qr.png")
-            if pag=="WhatsApp Web":
-                tel=st.text_input("Número")
-                men=st.text_area("Mensaje")
-                if st.button("Generar WhatsApp"):
-                    st.link_button("Abrir WhatsApp", f"https://wa.me/{limpiar_numero(tel)}?text={urllib.parse.quote(men)}")
+                st.success("Guardado")
+
+    elif pag=="Permisos":
+        st.dataframe(pd.read_sql("SELECT p.id, j.nombres, j.apellidos, p.destino, p.estado FROM permisos p JOIN jovenes j ON p.joven_id=j.id ORDER BY p.id DESC", conn), use_container_width=True)
+    elif pag=="QR de Acceso":
+        st.image(generar_qr(LINK_NUBE), width=250)
+        st.code(LINK_NUBE)
 
 if st.session_state.usuario is None:
     login()
