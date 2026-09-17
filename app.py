@@ -20,7 +20,7 @@ IP_LOCAL = get_ip()
 
 LINK_NUBE = "https://azulgrana-roga.streamlit.app/?pagina=portal"
 LINK_BASE = "https://azulgrana-roga.streamlit.app"
-TELEFONO_ALBERGUE = "595981123456" # <-- CAMBIA ACA POR EL NUMERO DE BACILIO CON 595
+TELEFONO_ALBERGUE = "595981531063" # <-- CAMBIA ACA POR EL NUMERO DE BACILIO CON 595
 
 st.set_page_config(page_title="Azulgrana Róga", layout="wide", page_icon="🏠")
 
