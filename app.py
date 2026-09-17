@@ -7,47 +7,7 @@ from io import BytesIO
 import urllib.parse
 import base64
 import socket
-st.markdown("""
-    <style>
-        #MainMenu, footer, .stDeployButton,
-        [data-testid="stToolbar"],
-        [data-testid="stDecoration"] {display: none !important;}
-        
-        header, [data-testid="stHeader"] {
-            background: transparent !important;
-        }
 
-        /* Forzar que el sidebar nunca se pierda */
-        section[data-testid="stSidebar"] {
-            transform: none !important;
-            visibility: visible !important;
-            display: block !important;
-        }
-
-        /* ESTE ES EL BOTON PARA TRAER DE VUELTA - AHORA ROJO Y GRANDE */
-        [data-testid="collapsedControl"],
-        [data-testid="stSidebarCollapsedControl"] {
-            display: flex !important;
-            visibility: visible !important;
-            position: fixed !important;
-            top: 50px !important;
-            left: 120px !important;
-            z-index: 9999999 !important;
-            background: #ff0000 !important;
-            color: white !important;
-            width: 40px !important;
-            height: 40px !important;
-            border-radius: 8px !important;
-            align-items: center !important;
-            justify-content: center !important;
-        }
-        [data-testid="collapsedControl"] svg,
-        [data-testid="stSidebarCollapsedControl"] svg {
-            fill: white !important;
-            color: white !important;
-        }
-    </style>
-""", unsafe_allow_html=True)
 def get_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -71,17 +31,19 @@ st.markdown("""
     h1, h2, h3 {color: #00529F; font-weight: bold;}
     [data-testid="stDataFrame"] {background-color: white!important;}
     [data-testid="stDataFrame"] * {color: black!important;}
-    /* OCULTAR SOLO DEPLOY Y FULLSCREEN, DEJAR BOTON DE MENU */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
- .stDeployButton {display:none!important;}
-    [data-testid="stToolbar"] {visibility: visible!important;}
-    [data-testid="stDecoration"] {visibility: hidden!important;}
-    [data-testid="stStatusWidget"] {visibility: hidden!important;}
-    button[title="View fullscreen"] {display: none!important;}
-    [data-testid="StyledFullScreenButton"] {display: none!important;}
+    /* FIX DEFINITIVO - SIN DEPLOY Y CON LOS 2 BOTONES */
+    #MainMenu, footer {visibility: hidden;}
+   .stDeployButton, [data-testid="stDeployButton"], [data-testid="stAppDeployButton"] {display: none!important; visibility: hidden!important; height: 0!important; width: 0!important;}
+    [data-testid="stToolbar"] {display: none!important;}
+    [data-testid="stDecoration"] {display: none!important;}
+    [data-testid="stStatusWidget"] {display: none!important;}
+    button[title="View fullscreen"], [data-testid="StyledFullScreenButton"] {display: none!important;}
     [data-testid="collapsedControl"] {display: block!important;}
-    header {visibility: visible!important;}
+    header, [data-testid="stHeader"] {
+        visibility: visible!important;
+        background-color: #001F3F!important;
+        background: #001F3F!important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -211,26 +173,21 @@ def app():
     st.sidebar.image("Logo.png", width=120)
     st.sidebar.title(f"🏠 {NOMBRE_SEDE}")
     st.sidebar.markdown(f"**{st.session_state.rol.upper()}** | {st.session_state.usuario}")
-
     menu_base = ["Panel de Control", "Lista de Usuarios", "Jovenes", "Permisos", "Mensajería", "Informe Tutoría", "Reportes", "QR de Acceso", "WhatsApp Web"]
     if st.session_state.rol == "Director":
         menu_admin = ["Crear Usuarios", "Portal Joven", "Contactos del Albergue"]
         MENU = menu_base + menu_admin
     else:
         MENU = menu_base
-
     pagina = st.sidebar.radio("Menú", MENU, key="menu_principal")
-
     if st.sidebar.button("Cerrar Sesión", use_container_width=True, type="primary"):
         st.session_state.usuario = None
         st.session_state.rol = None
         st.session_state.modo_proyeccion = False
         st.rerun()
-
     if pagina == "Lista de Usuarios":
         st.title("👥 Lista de Usuarios")
         st.dataframe(pd.read_sql("SELECT documento, nombre, rol FROM usuarios", conn), use_container_width=True)
-
     elif pagina == "Crear Usuarios" and st.session_state.rol == "Director":
         st.title("➕ Crear Nuevo Usuario")
         with st.form("form_usuario"):
@@ -245,7 +202,6 @@ def app():
                     st.success(f"Usuario {nombre} creado!")
                 except:
                     st.error("Ese documento ya existe")
-
     elif pagina == "Panel de Control":
         c_tit, c_btn1, c_btn2 = st.columns([6,1.5,1.5])
         with c_tit:
@@ -259,31 +215,27 @@ def app():
                 if st.button("❌ Salir Proyección", use_container_width=True):
                     st.session_state.modo_proyeccion = False
                     st.rerun()
-
         if st.session_state.get("modo_proyeccion", False):
             st.markdown("""
                 <style>
                 [data-testid="stSidebar"] {display: none;}
-              .block-container {padding-top: 1rem; padding-bottom: 0rem;}
+          .block-container {padding-top: 1rem; padding-bottom: 0rem;}
                 </style>
                 """, unsafe_allow_html=True)
             size_num = "90px"; size_txt = "22px"
         else:
             size_num = "45px"; size_txt = "14px"
-
         df_j = pd.read_sql("SELECT * FROM jovenes", conn)
         df_p = pd.read_sql("SELECT * FROM permisos", conn)
         en_albergue = len(df_j[df_j['estado']=="Actual"]) if not df_j.empty else 0
         aprobados = len(df_p[df_p['estado']=="Aprobado"]) if not df_p.empty else 0
         pendientes = len(df_p[df_p['estado']=="Pendiente"]) if not df_p.empty else 0
         rechazados = len(df_p[df_p['estado']=="Rechazado"]) if not df_p.empty else 0
-
         col1, col2, col3, col4 = st.columns(4)
         with col1: st.markdown(f"<div style='background:#002B5B; border-radius:12px; padding:10px;'><h1 style='text-align:center; color:white; font-size:{size_num}; margin:0; line-height:1;'>{en_albergue}</h1><p style='text-align:center; color:#AAAAAA; font-size:{size_txt}; margin:0;'>EN EL ALBERGUE</p></div>", unsafe_allow_html=True)
         with col2: st.markdown(f"<div style='background:#002B5B; border-radius:12px; padding:10px;'><h1 style='text-align:center; color:#FFFF00; font-size:{size_num}; margin:0; line-height:1;'>{pendientes}</h1><p style='text-align:center; color:#AAAAAA; font-size:{size_txt}; margin:0;'>PENDIENTES</p></div>", unsafe_allow_html=True)
         with col3: st.markdown(f"<div style='background:#002B5B; border-radius:12px; padding:10px;'><h1 style='text-align:center; color:#00FF00; font-size:{size_num}; margin:0; line-height:1;'>{aprobados}</h1><p style='text-align:center; color:#AAAAAA; font-size:{size_txt}; margin:0;'>APROBADOS</p></div>", unsafe_allow_html=True)
         with col4: st.markdown(f"<div style='background:#002B5B; border-radius:12px; padding:10px;'><h1 style='text-align:center; color:#FF4444; font-size:{size_num}; margin:0; line-height:1;'>{rechazados}</h1><p style='text-align:center; color:#AAAAAA; font-size:{size_txt}; margin:0;'>RECHAZADOS</p></div>", unsafe_allow_html=True)
-
         st.markdown("---")
         col_izq, col_der = st.columns([2.6,1])
         with col_izq:
@@ -316,7 +268,6 @@ def app():
             if not st.session_state.get("modo_proyeccion", False):
                 st.download_button("Descargar QR", qr_salida, "qr_salida.png", use_container_width=True)
                 st.info("Mismo WiFi que la PC")
-
     elif pagina == "Portal Joven" and st.session_state.rol == "Director":
         st.title("Portal del Joven - Azulgrana Róga")
         tab1, tab2, tab3 = st.tabs(["Solicitar Salida", "Consultar Estado", "Marcar Regreso"])
@@ -369,7 +320,6 @@ def app():
                         conn.commit()
                         st.success(f"Regreso: {ahora}")
                         st.balloons()
-
     elif pagina == "Jovenes":
         st.title("Gestión de Jóvenes")
         buscar = st.text_input("🔍 Buscar por documento")
@@ -462,7 +412,6 @@ def app():
                         conn.commit()
                         st.warning("Joven eliminado")
                         st.rerun()
-
     elif pagina == "Permisos":
         st.title("Permisos")
         c1,c2,c3,c4 = st.columns(4)
@@ -476,7 +425,6 @@ def app():
         if est_f!="Todos":
             query+=f" AND p.estado='{est_f}'"
         st.dataframe(pd.read_sql(query, conn), use_container_width=True)
-
     elif pagina == "Mensajería":
         st.title("Mensajería")
         st.subheader("Plantilla WhatsApp")
@@ -490,7 +438,6 @@ def app():
                 st.success("Guardado")
         st.subheader("Historial")
         st.dataframe(pd.read_sql("SELECT * FROM mensajes", conn), use_container_width=True)
-
     elif pagina == "Contactos del Albergue" and st.session_state.rol == "Director":
         st.title("Contactos")
         with st.form("new_contact"):
@@ -505,7 +452,6 @@ def app():
                 conn.commit()
                 st.success("Guardado")
         st.dataframe(pd.read_sql("SELECT * FROM contactos", conn), use_container_width=True)
-
     elif pagina == "WhatsApp Web":
         st.title("📱 WhatsApp Web Directo")
         st.caption("Envía mensajes directos sin guardar el contacto - Habilitado para todos")
@@ -539,7 +485,6 @@ def app():
             for _, r in df_jov.iterrows():
                 tel = limpiar_numero(str(r['telefono']))
                 st.link_button(f"👨‍👩‍👦 {r['responsable']} ({r['nombres']} {r['apellidos']})", f"https://wa.me/{tel}?text={urllib.parse.quote(mensaje)}", use_container_width=True)
-
     elif pagina == "Informe Tutoría":
         st.title("Informe Tutoría")
         tab_a, tab_b = st.tabs(["Informe General del Albergue", "Informe por Joven"])
@@ -576,13 +521,11 @@ def app():
             st.subheader("Historial de Informes por Joven")
             df_tj = pd.read_sql("SELECT tj.fecha, j.documento, j.nombres, j.apellidos, tj.informe FROM tutoria_joven tj JOIN jovenes j ON tj.joven_id=j.id ORDER BY tj.fecha DESC", conn)
             st.dataframe(df_tj, use_container_width=True)
-
     elif pagina == "Reportes":
         st.title("Reportes")
         df_rep = pd.read_sql("SELECT j.nombres, j.apellidos, j.categoria, p.fecha_sol, p.fecha_salida, p.fecha_regreso, p.motivo, p.destino, p.hora_regreso_real FROM permisos p JOIN jovenes j ON p.joven_id=j.id", conn)
         st.dataframe(df_rep, use_container_width=True)
         st.download_button("📄 Imprimir", df_rep.to_csv(index=False).encode('utf-8'), "reporte.csv")
-
     elif pagina == "QR de Acceso":
         st.title("QR de Acceso")
         qr = generar_qr(f"ALBERGUE:{NOMBRE_SEDE}")
