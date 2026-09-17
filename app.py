@@ -9,18 +9,30 @@ import base64
 import socket
 st.markdown("""
     <style>
-        header, [data-testid="stHeader"], #MainMenu, footer, 
-        [data-testid="stToolbar"], [data-testid="stDecoration"],
-        .stDeployButton {display: none !important; visibility: hidden !important;}
+        #MainMenu, footer, .stDeployButton,
+        [data-testid="stToolbar"],
+        [data-testid="stDecoration"] {display: none !important;}
+        
+        header, [data-testid="stHeader"] {
+            background: transparent !important;
+            height: 0px !important;
+            visibility: hidden !important;
+        }
+
         [data-testid="collapsedControl"],
         [data-testid="stSidebarCollapsedControl"] {
-            display: block !important;
+            display: flex !important;
             visibility: visible !important;
+            opacity: 1 !important;
             position: fixed !important;
-            left: 5px !important;
-            top: 5px !important;
+            top: 15px !important;
+            left: 15px !important;
             z-index: 9999999 !important;
+            background: white !important;
+            border-radius: 5px !important;
+            padding: 2px !important;
         }
+        section[data-testid="stSidebar"] {display: block !important;}
     </style>
 """, unsafe_allow_html=True)
 def get_ip():
