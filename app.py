@@ -20,7 +20,7 @@ IP_LOCAL = get_ip()
 
 LINK_NUBE = "https://azulgrana-roga.streamlit.app/?pagina=portal"
 LINK_BASE = "https://azulgrana-roga.streamlit.app"
-TELEFONO_ALBERGUE = "595981531063" # <-- CAMBIA ACA POR EL NUMERO DE BACILIO CON 595
+TELEFONO_ALBERGUE = "595981123456" # <-- PONE ACA EL NUMERO DE BACILIO CON 595
 
 st.set_page_config(page_title="Azulgrana Róga", layout="wide", page_icon="🏠")
 
@@ -35,10 +35,9 @@ st.markdown("""
     [data-testid="stDataFrame"] {background-color: white!important;}
     [data-testid="stDataFrame"] * {color: black!important;}
     #MainMenu, footer, [data-testid="stDecoration"], [data-testid="stStatusWidget"] {display:none!important;}
-   .stDeployButton, [data-testid="stDeployButton"], [data-testid="stAppDeployButton"], a[href*="deploy"] {display:none!important; visibility:hidden!important; width:0!important; height:0!important;}
+  .stDeployButton, [data-testid="stDeployButton"], [data-testid="stAppDeployButton"], a[href*="deploy"] {display:none!important; visibility:hidden!important; width:0!important; height:0!important;}
     button[title="View fullscreen"], [data-testid="StyledFullScreenButton"] {display: none!important;}
     header, [data-testid="stHeader"] {background: #001F3F!important;}
-    [data-testid="stToolbar"] {visibility: visible!important; display: block!important;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -77,8 +76,10 @@ if 'rol' not in st.session_state:
     st.session_state.rol = None
 if 'modo_proyeccion' not in st.session_state:
     st.session_state.modo_proyeccion = False
+if 'confirmar_eliminar_id' not in st.session_state:
+    st.session_state.confirmar_eliminar_id = None
 
-# --- 1. MANEJO DE APROBACION POR LINK DEL RESPONSABLE ---
+# --- 1. APROBACION POR LINK ---
 accion = str(st.query_params.get("accion", "")).lower()
 id_accion = st.query_params.get("id", "")
 if accion in ["aprobar", "rechazar"] and id_accion:
@@ -86,7 +87,7 @@ if accion in ["aprobar", "rechazar"] and id_accion:
     try:
         c.execute("UPDATE permisos SET estado=? WHERE id=?", (nuevo_estado, int(id_accion)))
         conn.commit()
-        info = pd.read_sql("SELECT j.nombres, j.apellidos, j.responsable, p.destino, p.fecha_salida FROM permisos p JOIN jovenes j ON p.joven_id=j.id WHERE p.id=?", conn, params=(int(id_accion),))
+        info = pd.read_sql("SELECT j.nombres, j.apellidos, j.responsable, p.destino FROM permisos p JOIN jovenes j ON p.joven_id=j.id WHERE p.id=?", conn, params=(int(id_accion),))
         if not info.empty:
             nom = f"{info.iloc[0]['nombres']} {info.iloc[0]['apellidos']}"
             resp = info.iloc[0]['responsable']
@@ -99,9 +100,6 @@ if accion in ["aprobar", "rechazar"] and id_accion:
             st.markdown(f"<h3 style='color:white; text-align:center;'>Gracias {resp} por responder.<br>Ahora avisá al albergue.</h3>", unsafe_allow_html=True)
             st.link_button(f"📲 Avisar al Albergue que fue {nuevo_estado}", url_aviso, type="primary", use_container_width=True)
             st.balloons()
-            st.stop()
-        else:
-            st.success(f"Solicitud {nuevo_estado}")
             st.stop()
     except Exception as e:
         st.error(f"Error: {e}")
@@ -216,7 +214,24 @@ def app():
         st.session_state.modo_proyeccion = False
         st.rerun()
 
-    if pagina == "Panel de Control":
+    if pagina == "Lista de Usuarios":
+        st.title("👥 Lista de Usuarios")
+        st.dataframe(pd.read_sql("SELECT documento, nombre, rol FROM usuarios", conn), use_container_width=True)
+    elif pagina == "Crear Usuarios" and st.session_state.rol == "Director":
+        st.title("➕ Crear Nuevo Usuario")
+        with st.form("form_usuario"):
+            doc = st.text_input("Documento/Cédula")
+            nombre = st.text_input("Nombre Completo")
+            password = st.text_input("Contraseña", type="password")
+            rol = st.selectbox("Rol", ROLES)
+            if st.form_submit_button("Guardar Usuario"):
+                try:
+                    c.execute("INSERT INTO usuarios VALUES (?,?,?,?)", (doc, nombre, password, rol))
+                    conn.commit()
+                    st.success(f"Usuario {nombre} creado!")
+                except:
+                    st.error("Ese documento ya existe")
+    elif pagina == "Panel de Control":
         st.title("Panel de Control")
         df_j = pd.read_sql("SELECT * FROM jovenes", conn)
         df_p = pd.read_sql("SELECT * FROM permisos", conn)
@@ -255,23 +270,6 @@ def app():
             st.code(url_salida, language=None)
             st.download_button("Descargar QR", qr_salida, "qr_salida.png", use_container_width=True)
 
-    elif pagina == "Lista de Usuarios":
-        st.title("👥 Lista de Usuarios")
-        st.dataframe(pd.read_sql("SELECT documento, nombre, rol FROM usuarios", conn), use_container_width=True)
-    elif pagina == "Crear Usuarios" and st.session_state.rol == "Director":
-        st.title("➕ Crear Nuevo Usuario")
-        with st.form("form_usuario"):
-            doc = st.text_input("Documento/Cédula")
-            nombre = st.text_input("Nombre Completo")
-            password = st.text_input("Contraseña", type="password")
-            rol = st.selectbox("Rol", ROLES)
-            if st.form_submit_button("Guardar Usuario"):
-                try:
-                    c.execute("INSERT INTO usuarios VALUES (?,?,?,?)", (doc, nombre, password, rol))
-                    conn.commit()
-                    st.success(f"Usuario {nombre} creado!")
-                except:
-                    st.error("Ese documento ya existe")
     elif pagina == "Jovenes":
         st.title("Gestión de Jóvenes")
         buscar = st.text_input("🔍 Buscar por documento")
@@ -313,74 +311,82 @@ def app():
                 conn.commit()
                 st.success("Joven guardado")
                 st.rerun()
+
         st.markdown("---")
         st.subheader("✏️ Editar / Eliminar Ficha")
-        doc_editar = st.text_input("Ingresá el documento del joven a editar")
+        doc_editar = st.text_input("Ingresá el documento del joven a editar", key="doc_editar_final")
         if doc_editar:
             joven_edit = pd.read_sql("SELECT * FROM jovenes WHERE documento=?", conn, params=(doc_editar,))
             if joven_edit.empty:
                 st.error("No existe un joven con ese documento")
             else:
                 jd = joven_edit.iloc[0]
-                st.info(f"Editando ficha de: {jd['nombres']} {jd['apellidos']}")
-                with st.form("form_editar"):
+                st.info(f"Editando ficha de: {jd['nombres']} {jd['apellidos']} - ID: {jd['id']}")
+                with st.form("form_editar_corregido"):
                     c1, c2 = st.columns(2)
                     with c1:
-                        e_documento=st.text_input("Documento", value=jd['documento'])
-                        e_nombres=st.text_input("Nombres", value=jd['nombres'])
-                        e_apellidos=st.text_input("Apellidos", value=jd['apellidos'])
-                        e_ciudad=st.text_input("Ciudad", value=jd['ciudad'] or "")
-                        e_barrio=st.text_input("Barrio", value=jd['barrio'] or "")
-                        e_direccion=st.text_input("Dirección", value=jd['direccion'] or "")
-                        e_telefono=st.text_input("Teléfono", value=jd['telefono'] or "")
-                        e_responsable=st.text_input("Responsable", value=jd['responsable'] or "")
-                        e_parentesco=st.text_input("Parentesco", value=jd['parentesco'] or "")
-                        e_tel_responsable=st.text_input("Tel Responsable", value=jd['tel_responsable'] or "")
+                        e_documento=st.text_input("Documento", value=str(jd['documento'] or ""))
+                        e_nombres=st.text_input("Nombres", value=str(jd['nombres'] or ""))
+                        e_apellidos=st.text_input("Apellidos", value=str(jd['apellidos'] or ""))
+                        e_ciudad=st.text_input("Ciudad", value=str(jd['ciudad'] or ""))
+                        e_barrio=st.text_input("Barrio", value=str(jd['barrio'] or ""))
+                        e_direccion=st.text_input("Dirección", value=str(jd['direccion'] or ""))
+                        e_telefono=st.text_input("Teléfono", value=str(jd['telefono'] or ""))
+                        e_responsable=st.text_input("Responsable", value=str(jd['responsable'] or ""))
+                        e_parentesco=st.text_input("Parentesco", value=str(jd['parentesco'] or ""))
+                        e_tel_responsable=st.text_input("Tel Responsable", value=str(jd['tel_responsable'] or ""))
                     with c2:
-                        e_estado=st.selectbox("Estado", ["Actual","Desvinculado"], index=0 if jd['estado']=="Actual" else 1)
-                        e_habitacion=st.text_input("Habitación", value=jd['habitacion'] or "")
-                        e_cama=st.text_input("Cama", value=jd['cama'] or "")
-                        e_colegio=st.text_input("Colegio", value=jd['colegio'] or "")
-                        e_grado=st.text_input("Grado", value=jd['grado'] or "")
-                        e_deporte=st.text_input("Deporte", value=jd['deporte'] or "")
-                        e_posicion=st.text_input("Posición", value=jd['posicion'] or "")
-                        e_categoria=st.text_input("Categoría", value=jd['categoria'] or "")
-                        e_turno=st.selectbox("Turno", ["Mañana","Tarde","Noche"], index=["Mañana","Tarde","Noche"].index(jd['turno']) if jd['turno'] in ["Mañana","Tarde","Noche"] else 0)
-                        e_foto_url=st.text_input("URL Foto", value=jd['foto_url'] or "")
-                    e_motivo=st.text_area("Motivo ingreso", value=jd['motivo_ingreso'] or "")
-                    col_guardar, col_eliminar = st.columns(2)
-                    with col_guardar:
-                        guardar = st.form_submit_button("💾 Guardar Cambios", type="primary", use_container_width=True)
-                    with col_eliminar:
-                        eliminar = st.form_submit_button("🗑️ Eliminar Joven", use_container_width=True)
+                        e_estado=st.selectbox("Estado", ["Actual","Desvinculado"], index=0 if str(jd['estado'])=="Actual" else 1)
+                        e_habitacion=st.text_input("Habitación", value=str(jd['habitacion'] or ""))
+                        e_cama=st.text_input("Cama", value=str(jd['cama'] or ""))
+                        e_colegio=st.text_input("Colegio", value=str(jd['colegio'] or ""))
+                        e_grado=st.text_input("Grado", value=str(jd['grado'] or ""))
+                        e_deporte=st.text_input("Deporte", value=str(jd['deporte'] or ""))
+                        e_posicion=st.text_input("Posición", value=str(jd['posicion'] or ""))
+                        e_categoria=st.text_input("Categoría", value=str(jd['categoria'] or ""))
+                        turno_actual = str(jd['turno'] or "Mañana")
+                        if turno_actual not in ["Mañana","Tarde","Noche"]:
+                            turno_actual = "Mañana"
+                        e_turno=st.selectbox("Turno", ["Mañana","Tarde","Noche"], index=["Mañana","Tarde","Noche"].index(turno_actual))
+                        e_foto_url=st.text_input("URL Foto", value=str(jd['foto_url'] or ""))
+                    e_motivo=st.text_area("Motivo ingreso", value=str(jd['motivo_ingreso'] or ""))
+                    guardar = st.form_submit_button("💾 Guardar Cambios", type="primary", use_container_width=True)
                     if guardar:
-                        c.execute("""UPDATE jovenes SET documento=?, nombres=?, apellidos=?, ciudad=?, barrio=?, direccion=?, telefono=?, responsable=?, parentesco=?, tel_responsable=?, estado=?, habitacion=?, cama=?, colegio=?, grado=?, deporte=?, posicion=?, categoria=?, turno=?, foto_url=?, motivo_ingreso=? WHERE id=?""",
-                            (e_documento, e_nombres, e_apellidos, e_ciudad, e_barrio, e_direccion, e_telefono, e_responsable, e_parentesco, e_tel_responsable, e_estado, e_habitacion, e_cama, e_colegio, e_grado, e_deporte, e_posicion, e_categoria, e_turno, e_foto_url, e_motivo, jd['id']))
-                        conn.commit()
-                        st.success("✅ Ficha actualizada")
-                        st.rerun()
-                    if eliminar:
-                        c.execute("DELETE FROM jovenes WHERE id=?", (jd['id'],))
-                        conn.commit()
-                        st.warning("Joven eliminado")
-                        st.rerun()
+                        try:
+                            c.execute("""UPDATE jovenes SET documento=?, nombres=?, apellidos=?, ciudad=?, barrio=?, direccion=?, telefono=?, responsable=?, parentesco=?, tel_responsable=?, estado=?, habitacion=?, cama=?, colegio=?, grado=?, deporte=?, posicion=?, categoria=?, turno=?, foto_url=?, motivo_ingreso=? WHERE id=?""",
+                                (e_documento, e_nombres, e_apellidos, e_ciudad, e_barrio, e_direccion, e_telefono, e_responsable, e_parentesco, e_tel_responsable, e_estado, e_habitacion, e_cama, e_colegio, e_grado, e_deporte, e_posicion, e_categoria, e_turno, e_foto_url, e_motivo, int(jd['id'])))
+                            conn.commit()
+                            st.success("✅ Ficha actualizada correctamente")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al guardar: {e}")
+                st.markdown("---")
+                st.write("Zona peligrosa")
+                if st.button(f"🗑️ Eliminar a {jd['nombres']} {jd['apellidos']}", use_container_width=True):
+                    st.session_state.confirmar_eliminar_id = int(jd['id'])
+                if st.session_state.get('confirmar_eliminar_id') == int(jd['id']):
+                    st.warning(f"¿Seguro que querés eliminar a {jd['nombres']} {jd['apellidos']}? Esta acción no se puede deshacer.")
+                    col_si, col_no = st.columns(2)
+                    with col_si:
+                        if st.button("Sí, Eliminar", type="primary", use_container_width=True):
+                            c.execute("DELETE FROM jovenes WHERE id=?", (int(jd['id']),))
+                            conn.commit()
+                            st.session_state.confirmar_eliminar_id = None
+                            st.warning("Joven eliminado")
+                            st.rerun()
+                    with col_no:
+                        if st.button("Cancelar", use_container_width=True):
+                            st.session_state.confirmar_eliminar_id = None
+                            st.rerun()
+
     elif pagina == "Permisos":
         st.title("Permisos")
-        c1,c2,c3,c4 = st.columns(4)
-        doc_f=c1.text_input("Documento")
-        est_f=c2.selectbox("Estado",["Todos","Pendiente","Aprobado","Rechazado"])
-        fecha_f=c3.date_input("Fecha")
-        dest_f=c4.text_input("Destino")
         query="SELECT p.id, j.documento, j.nombres, j.apellidos, p.fecha_sol, p.fecha_salida, p.destino, p.estado, p.hora_regreso_real FROM permisos p JOIN jovenes j ON p.joven_id=j.id WHERE 1=1"
-        if doc_f:
-            query+=f" AND j.documento LIKE '%{doc_f}%'"
-        if est_f!="Todos":
-            query+=f" AND p.estado='{est_f}'"
         st.dataframe(pd.read_sql(query, conn), use_container_width=True)
     elif pagina == "Mensajería":
         st.title("Mensajería")
         st.subheader("Plantilla WhatsApp")
-        st.caption("Usa {nombre}, {destino}, {fecha_salida}, {hora_salida}, {motivo} como variables")
+        st.caption("Usa {nombre}, {destino}, {fecha_salida}, {hora_salida}, {motivo}")
         msg = pd.read_sql("SELECT * FROM mensajes WHERE tipo='Predeterminado' LIMIT 1", conn)
         msg_act = msg.iloc[0]['mensaje'] if not msg.empty else ""
         with st.form("plantilla"):
@@ -437,7 +443,6 @@ def app():
                     st.success("✅ Informe general guardado")
             st.dataframe(pd.read_sql("SELECT * FROM tutoria ORDER BY fecha DESC", conn), use_container_width=True)
         with tab_b:
-            st.subheader("Cargar Informe Individual")
             with st.form("inf_joven"):
                 doc_j=st.text_input("Documento del Joven")
                 informe=st.text_area("Informe del Joven", height=200)
