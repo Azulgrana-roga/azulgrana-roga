@@ -7,7 +7,14 @@ from io import BytesIO
 import urllib.parse
 import base64
 import socket
-
+st.markdown("""
+    <style>
+        header {visibility: hidden;}
+        footer {visibility: hidden;}
+        .stDeployButton {display:none;}
+        [data-testid="stToolbar"] {visibility: hidden !important;}
+    </style>
+""", unsafe_allow_html=True)
 def get_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
