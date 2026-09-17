@@ -5,9 +5,7 @@ from datetime import datetime, date, time
 import qrcode
 from io import BytesIO
 import urllib.parse
-import base64
 import socket
-import os
 
 def get_ip():
     try:
@@ -20,9 +18,9 @@ def get_ip():
         return "192.168.100.5"
 IP_LOCAL = get_ip()
 
-# --- CONFIGURA ACA TU LINK DE STREAMLIT CLOUD ---
 LINK_NUBE = "https://azulgrana-roga.streamlit.app/?pagina=portal"
-# Ejemplo: LINK_NUBE = "https://azulgranaroga.streamlit.app/?pagina=portal"
+LINK_BASE = "https://azulgrana-roga.streamlit.app"
+TELEFONO_ALBERGUE = "595981123456" # <-- CAMBIA ACA POR EL NUMERO DE BACILIO CON 595
 
 st.set_page_config(page_title="Azulgrana Róga", layout="wide", page_icon="🏠")
 
@@ -37,16 +35,10 @@ st.markdown("""
     [data-testid="stDataFrame"] {background-color: white!important;}
     [data-testid="stDataFrame"] * {color: black!important;}
     #MainMenu, footer, [data-testid="stDecoration"], [data-testid="stStatusWidget"] {display:none!important;}
-  .stDeployButton, [data-testid="stDeployButton"], [data-testid="stAppDeployButton"], a[href*="deploy"] {display:none!important; visibility:hidden!important; width:0!important; height:0!important;}
+   .stDeployButton, [data-testid="stDeployButton"], [data-testid="stAppDeployButton"], a[href*="deploy"] {display:none!important; visibility:hidden!important; width:0!important; height:0!important;}
     button[title="View fullscreen"], [data-testid="StyledFullScreenButton"] {display: none!important;}
-    header, [data-testid="stHeader"] {background: #001F3F!important; background-color: #001F3F!important; visibility: visible!important;}
+    header, [data-testid="stHeader"] {background: #001F3F!important;}
     [data-testid="stToolbar"] {visibility: visible!important; display: block!important;}
-    [data-testid="collapsedControl"] {
-        display: block!important;
-        visibility: visible!important;
-        opacity: 1!important;
-        position: relative!important;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -63,7 +55,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS mensajes (id INTEGER PRIMARY KEY AUTOINC
 c.execute('''CREATE TABLE IF NOT EXISTS contactos (id INTEGER PRIMARY KEY AUTOINCREMENT, joven_id INTEGER, nombres TEXT, apellidos TEXT, cargo TEXT, rol TEXT, telefono TEXT, observacion TEXT)''')
 c.execute('''CREATE TABLE IF NOT EXISTS tutoria (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha DATE, desarrollo TEXT, rutinas TEXT, infraestructura TEXT, observaciones TEXT, necesidad TEXT, prioridad TEXT)''')
 c.execute('''CREATE TABLE IF NOT EXISTS tutoria_joven (id INTEGER PRIMARY KEY AUTOINCREMENT, joven_id INTEGER, fecha DATE, informe TEXT)''')
-c.execute("INSERT OR IGNORE INTO mensajes (id, tipo, mensaje) VALUES (1, 'Predeterminado', 'Hola. Su hijo/a ha solicitado permiso de salida del albergue Azulgrana Róga.')")
+c.execute("INSERT OR IGNORE INTO mensajes (id, tipo, mensaje) VALUES (1, 'Predeterminado', 'Hola. Su hijo/a {nombre} ha solicitado permiso de salida del albergue Azulgrana Róga. Destino: {destino} - Fecha: {fecha_salida} {hora_salida}.')")
 c.execute("INSERT OR IGNORE INTO usuarios (documento, nombre, password, rol) VALUES ('admin', 'Administrador', 'cerro2026', 'Director')")
 conn.commit()
 
@@ -86,12 +78,39 @@ if 'rol' not in st.session_state:
 if 'modo_proyeccion' not in st.session_state:
     st.session_state.modo_proyeccion = False
 
+# --- 1. MANEJO DE APROBACION POR LINK DEL RESPONSABLE ---
+accion = str(st.query_params.get("accion", "")).lower()
+id_accion = st.query_params.get("id", "")
+if accion in ["aprobar", "rechazar"] and id_accion:
+    nuevo_estado = "Aprobado" if accion == "aprobar" else "Rechazado"
+    try:
+        c.execute("UPDATE permisos SET estado=? WHERE id=?", (nuevo_estado, int(id_accion)))
+        conn.commit()
+        info = pd.read_sql("SELECT j.nombres, j.apellidos, j.responsable, p.destino, p.fecha_salida FROM permisos p JOIN jovenes j ON p.joven_id=j.id WHERE p.id=?", conn, params=(int(id_accion),))
+        if not info.empty:
+            nom = f"{info.iloc[0]['nombres']} {info.iloc[0]['apellidos']}"
+            resp = info.iloc[0]['responsable']
+            dest = info.iloc[0]['destino']
+            texto_aviso = f"AVISO ALBERGUE AZULGRANA ROGA: El responsable {resp} ha {nuevo_estado.upper()} la salida de {nom} con destino a {dest}. ID: {id_accion}"
+            c.execute("INSERT INTO mensajes (fecha, adolescente, contacto, tipo, mensaje, estado) VALUES (?,?,?,?,?,?)", (str(date.today()), nom, "Albergue", f"Respuesta {nuevo_estado}", texto_aviso, nuevo_estado))
+            conn.commit()
+            url_aviso = f"https://wa.me/{TELEFONO_ALBERGUE}?text={urllib.parse.quote(texto_aviso)}"
+            st.markdown(f"<h1 style='color:white; text-align:center; margin-top:50px;'>✅ Solicitud {id_accion} {nuevo_estado}</h1>", unsafe_allow_html=True)
+            st.markdown(f"<h3 style='color:white; text-align:center;'>Gracias {resp} por responder.<br>Ahora avisá al albergue.</h3>", unsafe_allow_html=True)
+            st.link_button(f"📲 Avisar al Albergue que fue {nuevo_estado}", url_aviso, type="primary", use_container_width=True)
+            st.balloons()
+            st.stop()
+        else:
+            st.success(f"Solicitud {nuevo_estado}")
+            st.stop()
+    except Exception as e:
+        st.error(f"Error: {e}")
+        st.stop()
+
+# --- 2. PORTAL JOVEN ---
 pagina_qr = str(st.query_params.get("pagina", "")).lower()
 if pagina_qr in ["portal", "portal joven"]:
     st.markdown(f"<h1 style='color:white;'>Portal del Joven - {NOMBRE_SEDE}</h1>", unsafe_allow_html=True)
-    # Si esta en la nube, no mostramos IP local
-    if "streamlit" not in LINK_NUBE or "TU-LINK" in LINK_NUBE:
-        st.caption(f"Conectado a red local {IP_LOCAL}")
     tab1, tab2, tab3 = st.tabs(["Solicitar Salida", "Consultar Estado", "Marcar Regreso"])
     with tab1:
         doc_qr = st.text_input("Ingresá tu documento", key="doc_solicitar")
@@ -106,7 +125,7 @@ if pagina_qr in ["portal", "portal joven"]:
                 else:
                     st.success(f"Bienvenido {jd['nombres']} {jd['apellidos']}")
                     plantilla_row = pd.read_sql("SELECT mensaje FROM mensajes WHERE tipo='Predeterminado' LIMIT 1", conn)
-                    plantilla = plantilla_row.iloc[0]['mensaje'] if not plantilla_row.empty else "Solicitud de salida"
+                    plantilla = plantilla_row.iloc[0]['mensaje'] if not plantilla_row.empty else "Solicitud de salida de {nombre} a {destino}"
                     with st.form("form_qr_publico"):
                         c1,c2 = st.columns(2)
                         with c1:
@@ -126,11 +145,17 @@ if pagina_qr in ["portal", "portal joven"]:
                                 c.execute("INSERT INTO permisos (joven_id,fecha_sol,fecha_salida,hora_salida,fecha_regreso,hora_regreso,tipo_salida,destino,persona_salida,motivo,estado) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                                 (jd['id'], str(date.today()), str(fecha_salida), str(hora_salida), str(fecha_regreso), str(hora_regreso), tipo_salida, destino, persona, motivo, "Pendiente"))
                                 conn.commit()
-                                texto_final = f"{plantilla}\n\nJoven: {jd['nombres']} {jd['apellidos']}\nDestino: {destino}\nSalida: {fecha_salida} {hora_salida}\nRegreso: {fecha_regreso} {hora_regreso}\nMotivo: {motivo}"
+                                id_nuevo = c.lastrowid
+                                texto_base = plantilla.replace("{nombre}", f"{jd['nombres']} {jd['apellidos']}").replace("{destino}", destino).replace("{fecha_salida}", str(fecha_salida)).replace("{hora_salida}", str(hora_salida)).replace("{motivo}", motivo)
+                                link_aprobar = f"{LINK_BASE}/?accion=aprobar&id={id_nuevo}"
+                                link_rechazar = f"{LINK_BASE}/?accion=rechazar&id={id_nuevo}"
+                                texto_final = f"{texto_base}\n\n✅ Para APROBAR toque: {link_aprobar}\n❌ Para RECHAZAR toque: {link_rechazar}\n\nDestino: {destino}\nSalida: {fecha_salida} {hora_salida}\nRegreso: {fecha_regreso} {hora_regreso}\nMotivo: {motivo}"
                                 tel = limpiar_numero(jd['tel_responsable'])
                                 url_wp = f"https://wa.me/{tel}?text={urllib.parse.quote(texto_final)}"
-                                st.success("✅ Solicitud enviada")
+                                st.success("✅ Solicitud enviada. Se generó el WhatsApp automático.")
                                 st.link_button(f"📱 Enviar WhatsApp a {jd['responsable']}", url_wp, use_container_width=True)
+                                c.execute("INSERT INTO mensajes (fecha, adolescente, contacto, tipo, mensaje, estado) VALUES (?,?,?,?,?,?)", (str(date.today()), f"{jd['nombres']} {jd['apellidos']}", jd['responsable'], "Salida", texto_final, "Pendiente"))
+                                conn.commit()
     with tab2:
         doc_cons_qr = st.text_input("Ingresá tu documento para consultar", key="doc_consultar")
         if doc_cons_qr:
@@ -190,7 +215,47 @@ def app():
         st.session_state.rol = None
         st.session_state.modo_proyeccion = False
         st.rerun()
-    if pagina == "Lista de Usuarios":
+
+    if pagina == "Panel de Control":
+        st.title("Panel de Control")
+        df_j = pd.read_sql("SELECT * FROM jovenes", conn)
+        df_p = pd.read_sql("SELECT * FROM permisos", conn)
+        en_albergue = len(df_j[df_j['estado']=="Actual"]) if not df_j.empty else 0
+        aprobados = len(df_p[df_p['estado']=="Aprobado"]) if not df_p.empty else 0
+        pendientes = len(df_p[df_p['estado']=="Pendiente"]) if not df_p.empty else 0
+        rechazados = len(df_p[df_p['estado']=="Rechazado"]) if not df_p.empty else 0
+        col1, col2, col3, col4 = st.columns(4)
+        with col1: st.metric("EN EL ALBERGUE", en_albergue)
+        with col2: st.metric("PENDIENTES", pendientes)
+        with col3: st.metric("APROBADOS", aprobados)
+        with col4: st.metric("RECHAZADOS", rechazados)
+        st.markdown("---")
+        col_izq, col_der = st.columns([2.6,1])
+        with col_izq:
+            st.markdown("### Permisos Solicitados")
+            if not df_p.empty:
+                df_tabla = pd.read_sql("""SELECT p.id as ID, j.nombres as Nombre, j.apellidos as Apellido, p.fecha_sol as "Fec.Sol", p.fecha_salida as "Salida", p.destino as Destino, p.estado as Estado FROM permisos p JOIN jovenes j ON p.joven_id=j.id ORDER BY p.id DESC""", conn)
+                st.dataframe(df_tabla, use_container_width=True, hide_index=True)
+                c_a, c_b, c_c = st.columns([1,1,1])
+                with c_a: id_permiso = st.selectbox("ID", df_p['id'].tolist(), key="id_panel")
+                with c_b: nuevo_estado = st.selectbox("Estado", ["Pendiente","Aprobado","Rechazado"], key="estado_panel")
+                with c_c:
+                    st.write("")
+                    if st.button("Actualizar", type="primary", use_container_width=True):
+                        c.execute("UPDATE permisos SET estado=? WHERE id=?", (nuevo_estado, id_permiso))
+                        conn.commit()
+                        st.rerun()
+            else:
+                st.info("Aún no hay solicitudes")
+        with col_der:
+            st.markdown("### QR Salida")
+            url_salida = LINK_NUBE
+            qr_salida = generar_qr(url_salida)
+            st.image(qr_salida, width=220)
+            st.code(url_salida, language=None)
+            st.download_button("Descargar QR", qr_salida, "qr_salida.png", use_container_width=True)
+
+    elif pagina == "Lista de Usuarios":
         st.title("👥 Lista de Usuarios")
         st.dataframe(pd.read_sql("SELECT documento, nombre, rol FROM usuarios", conn), use_container_width=True)
     elif pagina == "Crear Usuarios" and st.session_state.rol == "Director":
@@ -207,132 +272,6 @@ def app():
                     st.success(f"Usuario {nombre} creado!")
                 except:
                     st.error("Ese documento ya existe")
-    elif pagina == "Panel de Control":
-        c_tit, c_btn1, c_btn2 = st.columns([6,1.5,1.5])
-        with c_tit:
-            st.title("Panel de Control")
-        with c_btn1:
-            if st.button("📽️ Proyectar", use_container_width=True, type="primary"):
-                st.session_state.modo_proyeccion = not st.session_state.get("modo_proyeccion", False)
-                st.rerun()
-        with c_btn2:
-            if st.session_state.get("modo_proyeccion", False):
-                if st.button("❌ Salir Proyección", use_container_width=True):
-                    st.session_state.modo_proyeccion = False
-                    st.rerun()
-        if st.session_state.get("modo_proyeccion", False):
-            st.markdown("""
-                <style>
-                [data-testid="stSidebar"] {display: none;}
-    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
-                </style>
-                """, unsafe_allow_html=True)
-            size_num = "90px"; size_txt = "22px"
-        else:
-            size_num = "45px"; size_txt = "14px"
-        df_j = pd.read_sql("SELECT * FROM jovenes", conn)
-        df_p = pd.read_sql("SELECT * FROM permisos", conn)
-        en_albergue = len(df_j[df_j['estado']=="Actual"]) if not df_j.empty else 0
-        aprobados = len(df_p[df_p['estado']=="Aprobado"]) if not df_p.empty else 0
-        pendientes = len(df_p[df_p['estado']=="Pendiente"]) if not df_p.empty else 0
-        rechazados = len(df_p[df_p['estado']=="Rechazado"]) if not df_p.empty else 0
-        col1, col2, col3, col4 = st.columns(4)
-        with col1: st.markdown(f"<div style='background:#002B5B; border-radius:12px; padding:10px;'><h1 style='text-align:center; color:white; font-size:{size_num}; margin:0; line-height:1;'>{en_albergue}</h1><p style='text-align:center; color:#AAAAAA; font-size:{size_txt}; margin:0;'>EN EL ALBERGUE</p></div>", unsafe_allow_html=True)
-        with col2: st.markdown(f"<div style='background:#002B5B; border-radius:12px; padding:10px;'><h1 style='text-align:center; color:#FFFF00; font-size:{size_num}; margin:0; line-height:1;'>{pendientes}</h1><p style='text-align:center; color:#AAAAAA; font-size:{size_txt}; margin:0;'>PENDIENTES</p></div>", unsafe_allow_html=True)
-        with col3: st.markdown(f"<div style='background:#002B5B; border-radius:12px; padding:10px;'><h1 style='text-align:center; color:#00FF00; font-size:{size_num}; margin:0; line-height:1;'>{aprobados}</h1><p style='text-align:center; color:#AAAAAA; font-size:{size_txt}; margin:0;'>APROBADOS</p></div>", unsafe_allow_html=True)
-        with col4: st.markdown(f"<div style='background:#002B5B; border-radius:12px; padding:10px;'><h1 style='text-align:center; color:#FF4444; font-size:{size_num}; margin:0; line-height:1;'>{rechazados}</h1><p style='text-align:center; color:#AAAAAA; font-size:{size_txt}; margin:0;'>RECHAZADOS</p></div>", unsafe_allow_html=True)
-        st.markdown("---")
-        col_izq, col_der = st.columns([2.6,1])
-        with col_izq:
-            st.markdown("### Permisos Solicitados")
-            if not df_p.empty:
-                df_tabla = pd.read_sql("""SELECT j.nombres as Nombre, j.apellidos as Apellido, p.fecha_sol as "Fec.Sol", p.fecha_salida as "Salida", p.destino as Destino, p.estado as Estado, p.id as ID FROM permisos p JOIN jovenes j ON p.joven_id=j.id ORDER BY p.id DESC LIMIT 8""", conn)
-                def color_estado(val):
-                    if val=="Pendiente": return 'background-color: #FFFF00; color: black; font-weight: bold;'
-                    if val=="Aprobado": return 'background-color: #00FF00; color: black; font-weight: bold;'
-                    if val=="Rechazado": return 'background-color: #FF4444; color: white; font-weight: bold;'
-                    return ''
-                st.dataframe(df_tabla.style.map(color_estado, subset=['Estado']), use_container_width=True, hide_index=True, height=300)
-                c_a, c_b, c_c = st.columns([1,1,1])
-                with c_a: id_permiso = st.selectbox("ID", df_p['id'].tolist(), key="id_panel")
-                with c_b: nuevo_estado = st.selectbox("Estado", ["Pendiente","Aprobado","Rechazado"], key="estado_panel")
-                with c_c:
-                    st.write("")
-                    if st.button("Actualizar", type="primary", use_container_width=True):
-                        c.execute("UPDATE permisos SET estado=? WHERE id=?", (nuevo_estado, id_permiso))
-                        conn.commit()
-                        st.rerun()
-            else:
-                st.info("Aún no hay solicitudes")
-        with col_der:
-            st.markdown("### QR Salida")
-            # --- CAMBIO IMPORTANTE PARA QUE FUNCIONE EN LA NUBE ---
-            if "TU-LINK-AQUI" in LINK_NUBE:
-                # Si aun no configuraste el link, usa IP local para pruebas
-                url_salida = f"http://{IP_LOCAL}:8501/?pagina=portal"
-                st.warning("⚠️ Configurá LINK_NUBE arriba en el código con tu link de Streamlit Cloud")
-            else:
-                # Si ya configuraste, usa el link de la nube
-                url_salida = LINK_NUBE
-
-            qr_salida = generar_qr(url_salida)
-            st.image(qr_salida, width=180 if not st.session_state.get("modo_proyeccion", False) else 350)
-            st.code(url_salida, language=None)
-            if not st.session_state.get("modo_proyeccion", False):
-                st.download_button("Descargar QR", qr_salida, "qr_salida.png", use_container_width=True)
-                st.info(f"Local: http://{IP_LOCAL}:8501/?pagina=portal")
-    elif pagina == "Portal Joven" and st.session_state.rol == "Director":
-        st.title("Portal del Joven - Azulgrana Róga")
-        tab1, tab2, tab3 = st.tabs(["Solicitar Salida", "Consultar Estado", "Marcar Regreso"])
-        with tab1:
-            doc_url = st.text_input("Ingrese su documento")
-            joven = pd.read_sql("SELECT * FROM jovenes WHERE documento=?", conn, params=(doc_url,)) if doc_url else pd.DataFrame()
-            if not joven.empty:
-                jd = joven.iloc[0]
-                st.success(f"Bienvenido {jd['nombres']} {jd['apellidos']}")
-                with st.form("form_salida"):
-                    c1,c2 = st.columns(2)
-                    with c1:
-                        fecha_sol = st.date_input("Fecha de solicitud", date.today())
-                        fecha_salida = st.date_input("Fecha de salida")
-                        hora_salida = st.time_input("Hora de salida")
-                    with c2:
-                        fecha_regreso = st.date_input("Fecha de regreso")
-                        hora_regreso = st.time_input("Hora de regreso")
-                        tipo_salida = st.selectbox("Tipo de salida", ["Familiar","Médico","Deportivo","Personal","Otro"])
-                        destino = st.text_input("Destino *")
-                        persona = st.text_input("Persona con quien saldrá")
-                        parentesco = st.text_input("Parentesco")
-                        tel_contacto = st.text_input("Teléfono de contacto")
-                        motivo = st.text_area("Motivo")
-                    if st.form_submit_button("Enviar solicitud", type="primary", use_container_width=True):
-                        if not destino:
-                            st.warning("El campo Destino es obligatorio")
-                        else:
-                            c.execute("INSERT INTO permisos (joven_id,fecha_sol,fecha_salida,hora_salida,fecha_regreso,hora_regreso,tipo_salida,destino,persona_salida,parentesco,tel_contacto,motivo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                            (jd['id'],str(fecha_sol),str(fecha_salida),str(hora_salida),str(fecha_regreso),str(hora_regreso),tipo_salida,destino,persona,parentesco,tel_contacto,motivo))
-                            conn.commit()
-                            st.success("✅ Solicitud enviada!")
-        with tab2:
-            doc_cons = st.text_input("Documento para consultar estado")
-            if doc_cons:
-                df_est = pd.read_sql("SELECT p.id, p.fecha_sol, p.destino, p.estado, p.hora_regreso_real FROM permisos p JOIN jovenes j ON p.joven_id=j.id WHERE j.documento=? ORDER BY p.fecha_sol DESC", conn, params=(doc_cons,))
-                st.dataframe(df_est, use_container_width=True)
-        with tab3:
-            doc_r = st.text_input("Documento para marcar regreso - interno")
-            if doc_r:
-                df_p = pd.read_sql("SELECT p.id, p.fecha_salida, p.destino FROM permisos p JOIN jovenes j ON p.joven_id=j.id WHERE j.documento=? AND p.estado='Aprobado' AND (p.hora_regreso_real IS NULL OR p.hora_regreso_real='')", conn, params=(doc_r,))
-                if df_p.empty:
-                    st.info("Sin salidas pendientes")
-                else:
-                    st.dataframe(df_p, use_container_width=True)
-                    id_r = st.selectbox("ID regreso", df_p['id'].tolist())
-                    if st.button("Marcar Regreso", type="primary", use_container_width=True):
-                        ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        c.execute("UPDATE permisos SET hora_regreso_real=? WHERE id=?", (ahora, id_r))
-                        conn.commit()
-                        st.success(f"Regreso: {ahora}")
-                        st.balloons()
     elif pagina == "Jovenes":
         st.title("Gestión de Jóvenes")
         buscar = st.text_input("🔍 Buscar por documento")
@@ -441,16 +380,17 @@ def app():
     elif pagina == "Mensajería":
         st.title("Mensajería")
         st.subheader("Plantilla WhatsApp")
+        st.caption("Usa {nombre}, {destino}, {fecha_salida}, {hora_salida}, {motivo} como variables")
         msg = pd.read_sql("SELECT * FROM mensajes WHERE tipo='Predeterminado' LIMIT 1", conn)
         msg_act = msg.iloc[0]['mensaje'] if not msg.empty else ""
         with st.form("plantilla"):
-            nuevo = st.text_area("Mensaje predeterminado", msg_act)
+            nuevo = st.text_area("Mensaje predeterminado", msg_act, height=150)
             if st.form_submit_button("Guardar"):
                 c.execute("UPDATE mensajes SET mensaje=? WHERE tipo='Predeterminado'", (nuevo,))
                 conn.commit()
                 st.success("Guardado")
         st.subheader("Historial")
-        st.dataframe(pd.read_sql("SELECT * FROM mensajes", conn), use_container_width=True)
+        st.dataframe(pd.read_sql("SELECT * FROM mensajes ORDER BY id DESC", conn), use_container_width=True)
     elif pagina == "Contactos del Albergue" and st.session_state.rol == "Director":
         st.title("Contactos")
         with st.form("new_contact"):
@@ -467,37 +407,18 @@ def app():
         st.dataframe(pd.read_sql("SELECT * FROM contactos", conn), use_container_width=True)
     elif pagina == "WhatsApp Web":
         st.title("📱 WhatsApp Web Directo")
-        st.caption("Envía mensajes directos sin guardar el contacto - Habilitado para todos")
         col1, col2 = st.columns([1,2])
         with col1:
-            telefono = st.text_input("Número (ej: 0981123456)", placeholder="0981...")
-            st.caption("Se convierte automático a 595...")
+            telefono = st.text_input("Número (ej: 0981123456)")
         with col2:
-            mensaje = st.text_area("Mensaje", height=150, placeholder="Escribí tu mensaje acá...")
+            mensaje = st.text_area("Mensaje", height=150)
         if st.button("Generar Link de WhatsApp", type="primary", use_container_width=True):
             if not telefono:
                 st.warning("Ingresá un número")
             else:
                 num_limpio = limpiar_numero(telefono)
                 url = f"https://wa.me/{num_limpio}?text={urllib.parse.quote(mensaje)}"
-                st.success(f"Número: {num_limpio}")
-                st.code(url)
-                st.link_button(f"📲 Abrir WhatsApp Web con {telefono}", url, use_container_width=True)
-                st.markdown(f'<a href="{url}" target="_blank">👉 Si no abre, clic acá</a>', unsafe_allow_html=True)
-        st.markdown("---")
-        st.subheader("Atajos rápidos")
-        df_cont = pd.read_sql("SELECT nombres, telefono FROM contactos WHERE telefono IS NOT NULL AND telefono!= ''", conn)
-        df_jov = pd.read_sql("SELECT nombres, apellidos, tel_responsable as telefono, responsable FROM jovenes WHERE tel_responsable IS NOT NULL AND tel_responsable!= ''", conn)
-        if not df_cont.empty:
-            st.write("**Contactos del Albergue:**")
-            for _, r in df_cont.iterrows():
-                tel = limpiar_numero(str(r['telefono']))
-                st.link_button(f"💬 {r['nombres']} - {r['telefono']}", f"https://wa.me/{tel}?text={urllib.parse.quote(mensaje)}", use_container_width=True)
-        if not df_jov.empty:
-            st.write("**Responsables de Jóvenes:**")
-            for _, r in df_jov.iterrows():
-                tel = limpiar_numero(str(r['telefono']))
-                st.link_button(f"👨‍👩‍👦 {r['responsable']} ({r['nombres']} {r['apellidos']})", f"https://wa.me/{tel}?text={urllib.parse.quote(mensaje)}", use_container_width=True)
+                st.link_button(f"📲 Abrir WhatsApp", url, use_container_width=True)
     elif pagina == "Informe Tutoría":
         st.title("Informe Tutoría")
         tab_a, tab_b = st.tabs(["Informe General del Albergue", "Informe por Joven"])
@@ -514,8 +435,6 @@ def app():
                     c.execute("INSERT INTO tutoria VALUES (NULL,?,?,?,?,?,?,?)",(str(fecha),desarrollo,rutinas,infra,obs,nec,prio))
                     conn.commit()
                     st.success("✅ Informe general guardado")
-            st.markdown("---")
-            st.subheader("Historial de Informes Generales")
             st.dataframe(pd.read_sql("SELECT * FROM tutoria ORDER BY fecha DESC", conn), use_container_width=True)
         with tab_b:
             st.subheader("Cargar Informe Individual")
@@ -530,13 +449,10 @@ def app():
                         c.execute("INSERT INTO tutoria_joven VALUES (NULL,?,?,?)",(jid.iloc[0]['id'], str(date.today()), informe))
                         conn.commit()
                         st.success(f"✅ Informe guardado para {jid.iloc[0]['nombres']} {jid.iloc[0]['apellidos']}")
-            st.markdown("---")
-            st.subheader("Historial de Informes por Joven")
-            df_tj = pd.read_sql("SELECT tj.fecha, j.documento, j.nombres, j.apellidos, tj.informe FROM tutoria_joven tj JOIN jovenes j ON tj.joven_id=j.id ORDER BY tj.fecha DESC", conn)
-            st.dataframe(df_tj, use_container_width=True)
+            st.dataframe(pd.read_sql("SELECT tj.fecha, j.documento, j.nombres, j.apellidos, tj.informe FROM tutoria_joven tj JOIN jovenes j ON tj.joven_id=j.id ORDER BY tj.fecha DESC", conn), use_container_width=True)
     elif pagina == "Reportes":
         st.title("Reportes")
-        df_rep = pd.read_sql("SELECT j.nombres, j.apellidos, j.categoria, p.fecha_sol, p.fecha_salida, p.fecha_regreso, p.motivo, p.destino, p.hora_regreso_real FROM permisos p JOIN jovenes j ON p.joven_id=j.id", conn)
+        df_rep = pd.read_sql("SELECT j.nombres, j.apellidos, j.categoria, p.fecha_sol, p.fecha_salida, p.fecha_regreso, p.motivo, p.destino, p.hora_regreso_real, p.estado FROM permisos p JOIN jovenes j ON p.joven_id=j.id", conn)
         st.dataframe(df_rep, use_container_width=True)
         st.download_button("📄 Imprimir", df_rep.to_csv(index=False).encode('utf-8'), "reporte.csv")
     elif pagina == "QR de Acceso":
