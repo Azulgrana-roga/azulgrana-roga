@@ -15,24 +15,25 @@ st.markdown("""
         
         header, [data-testid="stHeader"] {
             background: transparent !important;
-            height: 0px !important;
-            visibility: hidden !important;
+            height: 30px !important;
         }
 
+        /* Boton para ESCONDER (cuando el menu esta abierto) */
+        section[data-testid="stSidebar"] button {
+            display: block !important;
+            visibility: visible !important;
+        }
+
+        /* Boton para TRAER DE VUELTA (cuando el menu esta cerrado) */
         [data-testid="collapsedControl"],
         [data-testid="stSidebarCollapsedControl"] {
             display: flex !important;
             visibility: visible !important;
-            opacity: 1 !important;
             position: fixed !important;
-            top: 15px !important;
-            left: 15px !important;
+            top: 10px !important;
+            left: 10px !important;
             z-index: 9999999 !important;
-            background: white !important;
-            border-radius: 5px !important;
-            padding: 2px !important;
         }
-        section[data-testid="stSidebar"] {display: block !important;}
     </style>
 """, unsafe_allow_html=True)
 def get_ip():
