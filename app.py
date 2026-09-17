@@ -31,7 +31,7 @@ st.markdown("""
             visibility: visible !important;
             position: fixed !important;
             top: 50px !important;
-            left: 40px !important;
+            left: 120px !important;
             z-index: 9999999 !important;
             background: #ff0000 !important;
             color: white !important;
