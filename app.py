@@ -15,16 +15,16 @@ st.markdown("""
         
         header, [data-testid="stHeader"] {
             background: transparent !important;
-            height: 30px !important;
         }
 
-        /* Boton para ESCONDER (cuando el menu esta abierto) */
-        section[data-testid="stSidebar"] button {
-            display: block !important;
+        /* Forzar que el sidebar nunca se pierda */
+        section[data-testid="stSidebar"] {
+            transform: none !important;
             visibility: visible !important;
+            display: block !important;
         }
 
-        /* Boton para TRAER DE VUELTA (cuando el menu esta cerrado) */
+        /* ESTE ES EL BOTON PARA TRAER DE VUELTA - AHORA ROJO Y GRANDE */
         [data-testid="collapsedControl"],
         [data-testid="stSidebarCollapsedControl"] {
             display: flex !important;
@@ -33,6 +33,18 @@ st.markdown("""
             top: 10px !important;
             left: 10px !important;
             z-index: 9999999 !important;
+            background: #ff0000 !important;
+            color: white !important;
+            width: 40px !important;
+            height: 40px !important;
+            border-radius: 8px !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+        [data-testid="collapsedControl"] svg,
+        [data-testid="stSidebarCollapsedControl"] svg {
+            fill: white !important;
+            color: white !important;
         }
     </style>
 """, unsafe_allow_html=True)
