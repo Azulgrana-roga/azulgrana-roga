@@ -9,13 +9,21 @@ import base64
 import socket
 st.markdown("""
     <style>
+        header {visibility: hidden; height: 0px;}
+        [data-testid="stHeader"] {visibility: hidden; height: 0px;}
         #MainMenu {visibility: hidden;}
-        header {display: none !important;}
-        [data-testid="stHeader"] {display: none !important;}
-        [data-testid="stToolbar"] {display: none !important;}
         footer {visibility: hidden;}
         .stDeployButton {display: none !important;}
+        [data-testid="stToolbar"] {display: none !important;}
         [data-testid="stDecoration"] {display: none !important;}
+        [data-testid="collapsedControl"] {
+            visibility: visible !important;
+            display: block !important;
+            position: fixed !important;
+            top: 10px !important;
+            left: 10px !important;
+            z-index: 999999 !important;
+        }
         .block-container {padding-top: 1rem !important;}
     </style>
 """, unsafe_allow_html=True)
